@@ -1,0 +1,9 @@
+# 自作の2パッケージのみを追跡する。
+# VPM が解決する依存(com.vrchat.* など)とプロジェクト固有のマニフェストは
+# 配布・CI に不要なため追跡しない。
+/*/
+manifest.json
+packages-lock.json
+vpm-manifest.json
+!/com.mirukudasi.blm-importer-core/
+!/com.mirukudasi.blm-importer/

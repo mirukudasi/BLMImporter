@@ -1,0 +1,18 @@
+{
+    "name": "mirukudasi BLM Importer Listing",
+    "id": "com.mirukudasi.blm-importer.listing",
+    "url": "https://mirukudasi.github.io/BLMImporter/index.json",
+    "author": {
+        "name": "mirukudasi",
+        "url": "https://github.com/mirukudasi"
+    },
+    "description": "BOOTH Library Manager (BLM) のライブラリを Unity エディタで扱うためのパッケージ群",
+    "infoLink": {
+        "url": "https://github.com/mirukudasi/BLMImporter",
+        "text": "View on GitHub"
+    },
+    "bannerUrl": "banner.png",
+    "githubRepos": [
+        "mirukudasi/BLMImporter"
+    ]
+}

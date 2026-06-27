@@ -1,0 +1,22 @@
+{
+  "name": "com.mirukudasi.blm-importer",
+  "displayName": "BLM Importer",
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "BOOTH Library Manager (BLM) のライブラリを Unity エディタ上で閲覧・絞り込み・一括インポートするウィンドウ。メニュー Tools/BLMImporter から起動します。",
+  "author": {
+    "name": "mirukudasi",
+    "url": "https://github.com/mirukudasi"
+  },
+  "license": "MIT",
+  "keywords": [
+    "booth",
+    "library-manager",
+    "blm",
+    "editor",
+    "importer"
+  ],
+  "vpmDependencies": {
+    "com.mirukudasi.blm-importer-core": "1.0.0"
+  }
+}

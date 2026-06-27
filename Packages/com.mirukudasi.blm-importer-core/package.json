@@ -1,0 +1,18 @@
+{
+  "name": "com.mirukudasi.blm-importer-core",
+  "displayName": "BLM Importer Core",
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "BOOTH Library Manager (BLM) のライブラリ(data.db)を読み込み、unitypackage のインポートまで行う GUI 非依存のエディタ用 API。任意のエディタ拡張から BLMImporter.Editor.Core 名前空間で利用できます。",
+  "author": {
+    "name": "mirukudasi",
+    "url": "https://github.com/mirukudasi"
+  },
+  "license": "MIT",
+  "keywords": [
+    "booth",
+    "library-manager",
+    "blm",
+    "editor"
+  ]
+}
