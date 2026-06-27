@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: main
-    paths: source.json
+    paths:
+      - source.json
+      - Website/**
   release:
     types: [published, created, edited, unpublished, deleted, released]
   workflow_run:

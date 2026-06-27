@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLM Importer を VCC に追加</title>
+  <link rel="icon" href="./favicon.ico">
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      font-family: system-ui, "Segoe UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      background: #1115; background: linear-gradient(160deg, #0d1117, #161b22);
+      color: #e6edf3; padding: 24px;
+    }
+    .card {
+      max-width: 520px; width: 100%; text-align: center;
+      background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+      padding: 32px 28px; box-shadow: 0 8px 30px #0007;
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    p { margin: 10px 0; line-height: 1.7; color: #c9d1d9; }
+    .status { color: #8b949e; font-size: .95rem; }
+    .btn {
+      display: inline-block; margin: 18px 0 6px; padding: 12px 28px;
+      background: #2f81f7; color: #fff; text-decoration: none;
+      border-radius: 8px; font-weight: 700; font-size: 1.05rem;
+    }
+    .btn:hover { background: #4493f8; }
+    .hint { font-size: .85rem; color: #8b949e; }
+    code {
+      display: block; margin-top: 8px; padding: 10px 12px;
+      background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+      font-size: .8rem; word-break: break-all; color: #e6edf3;
+    }
+    a.back { color: #2f81f7; font-size: .85rem; }
+    details { margin-top: 14px; text-align: left; }
+    summary { cursor: pointer; color: #8b949e; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>BLM Importer を VCC に追加</h1>
+    <p class="status" id="status">VCC を起動しています…</p>
+    <a class="btn" id="addBtn"
+       href="vcc://vpm/addRepo?url=https%3A%2F%2Fmirukudasi.github.io%2FBLMImporter%2Findex.json">VCC に追加</a>
+    <p class="hint">自動で開かない場合は上のボタンを押してください。<br>
+      VCC (VRChat Creator Companion) がインストールされている必要があります。</p>
+    <details>
+      <summary>手動で追加する場合のリスティング URL</summary>
+      <code>https://mirukudasi.github.io/BLMImporter/index.json</code>
+    </details>
+    <p><a class="back" href="./">← リスティングページへ戻る</a></p>
+  </main>
+  <script>
+    var VCC_LINK = "vcc://vpm/addRepo?url=https%3A%2F%2Fmirukudasi.github.io%2FBLMImporter%2Findex.json";
+    window.addEventListener("load", function () {
+      // ページ描画後に VCC ディープリンクを自動で開く
+      setTimeout(function () { window.location.href = VCC_LINK; }, 300);
+    });
+  </script>
+</body>
+</html>

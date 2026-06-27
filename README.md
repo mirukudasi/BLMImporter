@@ -13,15 +13,15 @@ BOOTH Library Manager (BLM) のライブラリ(data.db)を Unity エディタか
 
 ### 1. リスティングを VCC に追加
 
-**ワンクリック追加**: 次のリンクを開くと VCC にこのリスティングが追加されます。
+**ワンクリック追加(推奨)**: 次のページを開くと、自動で VCC が起動してこのリスティングが追加されます。GitHub・Booth・Discord などどこからでもクリックできます。
 
-[➕ Add to VCC](vcc://vpm/addRepo?url=https%3A%2F%2Fmirukudasi.github.io%2FBLMImporter%2Findex.json)
+→ [**Add to VCC(ワンクリック)**](https://mirukudasi.github.io/BLMImporter/add.html)
 
-```text
-vcc://vpm/addRepo?url=https%3A%2F%2Fmirukudasi.github.io%2FBLMImporter%2Findex.json
-```
-
-> GitHub 上ではこのリンクはクリックできないことがあります(GitHub が `vcc://` スキームを無効化するため)。その場合は [リスティングページ](https://mirukudasi.github.io/BLMImporter/) の「Add to VCC」ボタンを使うか、下記の URL を VCC に手動で追加してください。
+> 仕組み: このページが `vcc://vpm/addRepo?...` ディープリンクを自動で開きます。`vcc://` を直接置くと GitHub ではクリックできないため、https の中継ページ経由にしています。`vcc://` を許可する場所(自サイトの `<a href>` など)では下記を直接使えます。
+>
+> ```text
+> vcc://vpm/addRepo?url=https%3A%2F%2Fmirukudasi.github.io%2FBLMImporter%2Findex.json
+> ```
 
 手動追加用のリスティング URL:
 
