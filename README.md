@@ -11,15 +11,27 @@ BOOTH Library Manager (BLM) のライブラリ(data.db)を Unity エディタか
 
 ## インストール (VCC / ALCOM)
 
-1. 下記リスティングを VCC に追加します:
+### 1. リスティングを VCC に追加
 
-   ```
-   https://mirukudasi.github.io/BLMImporter/index.json
-   ```
+**ワンクリック追加**: 次のリンクを開くと VCC にこのリスティングが追加されます。
 
-   または [リスティングページ](https://mirukudasi.github.io/BLMImporter/) の「Add to VCC」ボタンから追加できます。
-2. プロジェクトの Manage Project から `BLM Importer`(ウィンドウ)または `BLM Importer Core`(API のみ)を追加します。
-   - `BLM Importer` を追加すると Core も自動的に導入されます。
+[➕ Add to VCC](vcc://vpm/addRepo?url=https%3A%2F%2Fmirukudasi.github.io%2FBLMImporter%2Findex.json)
+
+```text
+vcc://vpm/addRepo?url=https%3A%2F%2Fmirukudasi.github.io%2FBLMImporter%2Findex.json
+```
+
+> GitHub 上ではこのリンクはクリックできないことがあります(GitHub が `vcc://` スキームを無効化するため)。その場合は [リスティングページ](https://mirukudasi.github.io/BLMImporter/) の「Add to VCC」ボタンを使うか、下記の URL を VCC に手動で追加してください。
+
+手動追加用のリスティング URL:
+
+```text
+https://mirukudasi.github.io/BLMImporter/index.json
+```
+
+### 2. パッケージを導入
+
+プロジェクトの Manage Project から `BLM Importer`(ウィンドウ)または `BLM Importer Core`(API のみ)を追加します。`BLM Importer` を追加すると Core も自動的に導入されます。
 
 ## 使い方
 
