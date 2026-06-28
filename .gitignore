@@ -76,6 +76,7 @@ crashlytics-build.properties
 /Assets/
 /ProjectSettings/
 .vsconfig
+/.claude/
 # Packages/ 配下は Packages/.gitignore で制御(自作2パッケージのみ追跡)
 
 # OS generated files
