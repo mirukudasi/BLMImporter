@@ -1430,13 +1430,14 @@ namespace BLMImporter.Editor
                         Application.OpenURL(orderId.OrderPageUrl());
                     }
                 }
-                // オーダーページを拡張の自動ダウンロード用URL（targets＋ライブラリパス）で開く
+                // 中継ページ経由で拡張機能に自動ダウンロードさせるボタン
                 DrawDownloadButton(item);
                 GUILayout.FlexibleSpace();
             }
         }
 
-        // オーダーページに BLMImporterDLtargets（itemid/variationid の配列）を付けて開く赤いボタン
+        // 中継ページを BLMImporterDLtargets（itemid/variationid の配列）付きで開く赤いボタン。
+        // 拡張機能が中継ページでジョブを受け取り、オーダーページへ移動してダウンロードする
         private void DrawDownloadButton(ItemRuntime item)
         {
             var orderId = item.r_Master.r_OrderIds[0];

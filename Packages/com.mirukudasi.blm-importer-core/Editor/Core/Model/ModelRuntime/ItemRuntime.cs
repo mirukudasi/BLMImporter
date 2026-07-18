@@ -108,8 +108,14 @@ namespace BLMImporter.Editor.Core
 
         public static string OrderPageUrl(this OrderId orderId) => "https://accounts.booth.pm/orders/" + orderId.r_Value;
 
-        // 指定注文に含まれる各バリエーションを {itemid, variationid} の配列にしてオーダーページURLへ付ける。
-        // あわせてライブラリの絶対パスと、完了通知サーバの接続情報（ポート/トークン）を載せる。
+        // ダウンロード指示をブラウザ拡張機能へ受け渡す中継ページ（BLMDownloader リポジトリの GitHub Pages）。
+        // Booth のページへ直接クエリパラメータを載せないため、パラメータはこのページだけに付ける。
+        // 拡張機能が未導入の場合は、このページが導入案内を表示する。
+        private const string c_ActionPageUrl = "https://mirukudasi.github.io/BLMDownloader/Action/";
+
+        // 指定注文に含まれる各バリエーションを {itemid, variationid} の配列にして中継ページURLへ付ける。
+        // あわせて注文ID・ライブラリの絶対パス・完了通知サーバの接続情報（ポート/トークン）を載せる。
+        // 拡張機能が中継ページでこれらを回収し、素のオーダーページへ遷移してダウンロードを実行する。
         // 副作用を持たない純粋なURL組み立て。サーバ起動やロックは呼び出し側で行う。
         // ショップ名（subdomain）は後から変わりうるため含めない。
         public static string DownloadUrl(this ItemRuntime item, OrderId orderId, int completionPort, string completionToken) {
@@ -118,8 +124,9 @@ namespace BLMImporter.Editor.Core
                 .Select(variation => "{itemid: " + item.r_Master.r_Id.r_Value + ", variationid: " + variation.r_Id.r_Value + "}");
             var payload = "[" + string.Join(", ", entries) + "]";
             var libraryPath = LibraryRuntimeSnapshot.Current.r_LibraryPath;
-            return orderId.OrderPageUrl()
-                + "?BLMImporterDLtargets=" + Uri.EscapeDataString(payload)
+            return c_ActionPageUrl
+                + "?BLMImporterOrderId=" + orderId.r_Value
+                + "&BLMImporterDLtargets=" + Uri.EscapeDataString(payload)
                 + "&BLMImporterLibraryPath=" + Uri.EscapeDataString(libraryPath)
                 + "&BLMImporterPort=" + completionPort
                 + "&BLMImporterToken=" + Uri.EscapeDataString(completionToken);
