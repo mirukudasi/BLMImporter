@@ -167,14 +167,3 @@ var texture = thumbnails.Get(item.m_ThumbnailUrl);
 ```
 
 - サーバー負荷を避けるためダウンロードは同時1件・0.2秒間隔です。`Get` は画面に見えている分だけ呼んでください
-
-## 低レベルAPI (通常は直接使わない)
-
-- `MiniSqlite` — ネイティブライブラリ不要の読み取り専用SQLiteリーダー。`HasTable(name)` と `SelectAll(name)` で data.db の任意テーブルを読める
-
-```csharp
-var db = new MiniSqlite(LibraryRuntimeSnapshot.DefaultDatabasePath);
-foreach (var row in db.SelectAll("shops")) {
-    Debug.Log(row.GetString("name"));
-}
-```

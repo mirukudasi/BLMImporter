@@ -10,7 +10,7 @@ namespace BLMImporter.Editor.Core
         public ItemListId Id => r_Master.r_Id;
         public string Title => r_Master.r_Title;
 
-        public ItemListRuntime(ItemListMaster master)
+        internal ItemListRuntime(ItemListMaster master)
         {
             r_Master = master;
         }

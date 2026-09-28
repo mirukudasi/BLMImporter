@@ -6,7 +6,7 @@ namespace BLMImporter.Editor.Core
     /// <summary>
     /// BのISO8601日時文字列を <see cref="DateTimeOffset"/> へ正規化する
     /// </summary>
-    public static class ModelDate
+    internal static class ModelDate
     {
         /// <summary>
         /// 解釈できない・空の場合は null を返す

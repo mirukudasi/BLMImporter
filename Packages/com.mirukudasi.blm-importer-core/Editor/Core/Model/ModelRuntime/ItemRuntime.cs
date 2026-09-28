@@ -17,7 +17,7 @@ namespace BLMImporter.Editor.Core
         // r_Files のうち unitypackage のものを一度だけ抽出してキャッシュ
         private readonly IReadOnlyList<ItemFile> r_UnityPackages;
 
-        public ItemRuntime(ItemMaster master, string folderPath, bool folderExists, IEnumerable<ItemFile> files)
+        internal ItemRuntime(ItemMaster master, string folderPath, bool folderExists, IEnumerable<ItemFile> files)
         {
             r_Master = master;
             r_FolderPath = folderPath ?? "";
@@ -71,7 +71,7 @@ namespace BLMImporter.Editor.Core
         public readonly bool r_IsUnityPackage;
 
         // 相対パスと unitypackage かどうかはフルパスから決まるので、呼び出し側では渡さずここで求める
-        public ItemFile(string fullPath, string itemFolderPath)
+        internal ItemFile(string fullPath, string itemFolderPath)
         {
             r_FullPath = fullPath ?? "";
             r_RelativePath = r_FullPath.Substring((itemFolderPath ?? "").Length).TrimStart('\\', '/');

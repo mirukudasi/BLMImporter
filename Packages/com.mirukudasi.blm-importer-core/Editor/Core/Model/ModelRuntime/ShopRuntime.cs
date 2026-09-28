@@ -5,7 +5,7 @@ namespace BLMImporter.Editor.Core
     {
         public readonly ShopMaster r_Master;
 
-        public ShopRuntime(ShopMaster master)
+        internal ShopRuntime(ShopMaster master)
         {
             r_Master = master;
         }

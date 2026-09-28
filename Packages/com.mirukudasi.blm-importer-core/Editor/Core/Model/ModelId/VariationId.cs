@@ -3,7 +3,7 @@ namespace BLMImporter.Editor.Core
     /// <summary>アイテムバリエーションのID（booth_item_variations.id）。</summary>
     public sealed class VariationId : ModelIdBase<long>
     {
-        public VariationId(long value) : base(value)
+        internal VariationId(long value) : base(value)
         {
         }
 

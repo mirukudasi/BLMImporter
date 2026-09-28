@@ -3,7 +3,7 @@ namespace BLMImporter.Editor.Core
     /// <summary>ショップのID（shops.subdomain が自然キー）。小文字に正規化して扱う。</summary>
     public sealed class ShopId : ModelIdBase<string>
     {
-        public ShopId(string subdomain) : base(Normalize(subdomain))
+        internal ShopId(string subdomain) : base(Normalize(subdomain))
         {
         }
 

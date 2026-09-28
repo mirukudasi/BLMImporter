@@ -5,7 +5,7 @@ namespace BLMImporter.Editor.Core
     {
         public readonly string r_Value;
 
-        public Url(string value)
+        internal Url(string value)
         {
             r_Value = (value ?? "").Trim();
         }

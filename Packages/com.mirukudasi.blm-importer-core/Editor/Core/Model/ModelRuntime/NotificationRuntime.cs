@@ -5,7 +5,7 @@ namespace BLMImporter.Editor.Core
     {
         public readonly NotificationMaster r_Master;
 
-        public NotificationRuntime(NotificationMaster master)
+        internal NotificationRuntime(NotificationMaster master)
         {
             r_Master = master;
         }

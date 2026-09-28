@@ -159,7 +159,7 @@ namespace BLMImporter.Editor.Core
         /// プロジェクトのアセットが変わったときに、照合結果だけを捨てる。
         /// unitypackage の解析結果は残すので、次回は照合し直すだけで済む。
         /// </summary>
-        public static void InvalidateResolved()
+        internal static void InvalidateResolved()
         {
             foreach (var entry in s_Entries.Values) {
                 entry.m_Resolved = false;

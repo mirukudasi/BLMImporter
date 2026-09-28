@@ -6,7 +6,7 @@ namespace BLMImporter.Editor.Core
     /// 遅延シングルトン。初回アクセス時に factory で生成して以後は使い回す。
     /// ClearCache で破棄すると次回アクセスで作り直す。factory が例外を投げた場合はキャッシュしない。
     /// </summary>
-    public sealed class Cache<T>
+    internal sealed class Cache<T>
     {
         private readonly Func<T> r_Factory;
         private bool m_HasValue = false;

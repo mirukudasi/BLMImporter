@@ -3,7 +3,7 @@ namespace BLMImporter.Editor.Core
     /// <summary>サブカテゴリのID（sub_categories.id）。</summary>
     public sealed class SubCategoryId : ModelIdBase<long>
     {
-        public SubCategoryId(long value) : base(value)
+        internal SubCategoryId(long value) : base(value)
         {
         }
 

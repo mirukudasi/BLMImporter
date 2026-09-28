@@ -5,7 +5,7 @@ namespace BLMImporter.Editor.Core
     {
         public readonly UserItemMaster r_Master;
 
-        public UserItemRuntime(UserItemMaster master)
+        internal UserItemRuntime(UserItemMaster master)
         {
             r_Master = master;
         }

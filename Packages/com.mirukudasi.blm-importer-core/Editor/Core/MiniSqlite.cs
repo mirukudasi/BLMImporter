@@ -12,7 +12,7 @@ namespace BLMImporter.Editor.Core
     /// テーブルB-Tree（リーフ/内部ページ）とオーバーフローページのみを扱い、
     /// 必要なテーブルをフルスキャンしてレコードを取り出す。
     /// </summary>
-    public sealed class MiniSqlite
+    internal sealed class MiniSqlite
     {
         /// <summary>テーブルの1行。列名から値を引ける。</summary>
         public sealed class Row

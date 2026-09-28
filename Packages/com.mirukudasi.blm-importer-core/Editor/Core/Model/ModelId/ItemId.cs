@@ -3,7 +3,7 @@ namespace BLMImporter.Editor.Core
     /// <summary>BOOTHアイテムのID（booth_items.id）。</summary>
     public sealed class ItemId : ModelIdBase<long>
     {
-        public static readonly ItemId Undefined = new ItemId(0);
+        internal static readonly ItemId Undefined = new ItemId(0);
 
         public ItemId(long value) : base(value)
         {

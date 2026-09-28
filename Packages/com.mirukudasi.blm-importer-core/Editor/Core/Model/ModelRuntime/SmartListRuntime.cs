@@ -13,7 +13,7 @@ namespace BLMImporter.Editor.Core
         public SmartListId Id => r_Master.r_Id;
         public string Title => r_Master.r_Title;
 
-        public SmartListRuntime(SmartListMaster master)
+        internal SmartListRuntime(SmartListMaster master)
         {
             r_Master = master;
         }

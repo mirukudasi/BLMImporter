@@ -9,7 +9,7 @@ namespace BLMImporter.Editor.Core
     /// <summary>
     /// unitypackage に収録されたアセット1件分の情報
     /// </summary>
-    public sealed class UnityPackageAsset
+    internal sealed class UnityPackageAsset
     {
         public readonly string r_Guid;
         // 書庫に記録された更新時刻。作者の手元でそのファイルが最後に更新された時刻にあたる
@@ -32,7 +32,7 @@ namespace BLMImporter.Editor.Core
     /// 中身は読み飛ばすため、プロジェクトへ展開せずに照合できる。
     /// Unity の API を呼ばないので、バックグラウンドスレッドから使える。
     /// </summary>
-    public static class UnityPackageArchive
+    internal static class UnityPackageArchive
     {
         // tar は 512 バイト単位のブロックで構成され、各ファイルはヘッダ1ブロック＋本体が続く
         private const int c_BlockSize = 512;

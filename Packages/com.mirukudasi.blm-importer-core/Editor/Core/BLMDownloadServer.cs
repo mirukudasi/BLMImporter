@@ -16,7 +16,7 @@ namespace BLMImporter.Editor.Core
     [InitializeOnLoad]
     public static class BLMDownloadServer
     {
-        public const int c_Port = 48750;
+        internal const int c_Port = 48750;
         private const string c_KeyActive = "BLMImporter.DownloadServer.Active";
         private const string c_KeyToken = "BLMImporter.DownloadServer.Token";
 
@@ -38,11 +38,11 @@ namespace BLMImporter.Editor.Core
             }
         }
 
-        public static int Port => c_Port;
-        public static string Token => s_Token;
+        internal static int Port => c_Port;
+        internal static string Token => s_Token;
 
         /// <summary>サーバを起動（未起動なら）。トークンはセッション内で固定し、リロードを跨いで再利用する。</summary>
-        public static void EnsureStarted()
+        internal static void EnsureStarted()
         {
             SessionState.SetBool(c_KeyActive, true);
             var token = SessionState.GetString(c_KeyToken, "");
@@ -79,7 +79,7 @@ namespace BLMImporter.Editor.Core
         }
 
         /// <summary>ダウンロード開始時に呼ぶ。完了通知かキャンセルまで IsDownloading=true になる。</summary>
-        public static void MarkDownloadStarted()
+        internal static void MarkDownloadStarted()
         {
             s_Downloading = true;
         }
