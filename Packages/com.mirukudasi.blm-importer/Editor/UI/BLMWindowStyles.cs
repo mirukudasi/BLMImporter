@@ -36,6 +36,9 @@ namespace BLMImporter.Editor
         public readonly GUIStyle MetaKey;
         public readonly GUIStyle Link;
         public readonly GUIStyle PackageName;
+        // 主動作と下矢印を左右にくっつけた分割ボタン用
+        public readonly GUIStyle SplitButtonMain;
+        public readonly GUIStyle SplitButtonArrow;
 
         public readonly Color Zebra;
         public readonly Color Hover;
@@ -90,6 +93,12 @@ namespace BLMImporter.Editor
             Badge.normal.background = MakeSolidTexture(new Color(0.80f, 0.20f, 0.22f));
             Badge.normal.textColor = Color.white;
 
+            SplitButtonMain = MakeSegmentStyle("ButtonLeft", EditorStyles.miniButtonLeft, textColor);
+            SplitButtonArrow = MakeSegmentStyle("ButtonRight", EditorStyles.miniButtonRight, textColor);
+            // 矢印はボタン幅が狭いので、余白を詰めて中央に置く
+            SplitButtonArrow.padding = new RectOffset(0, 0, 0, 0);
+            SplitButtonArrow.fontSize = 9;
+
             var assetLabel = GUI.skin.FindStyle("AssetLabel");
             if (assetLabel != null)
             {
@@ -131,6 +140,18 @@ namespace BLMImporter.Editor
                 return new Color(0.45f, 0.80f, 0.50f);
             }
             return new Color(0.65f, 0.65f, 0.65f);
+        }
+
+        /// <summary>
+        /// 左右がくっついて見える分割ボタンの片側を作る。
+        /// 組み込みスキンに該当スタイルが無いUnityでも崩れないよう、代替スタイルを指定させる。
+        /// </summary>
+        private static GUIStyle MakeSegmentStyle(string builtinName, GUIStyle fallback, Color textColor)
+        {
+            var source = GUI.skin.FindStyle(builtinName) ?? fallback;
+            var style = new GUIStyle(source) { alignment = TextAnchor.MiddleCenter };
+            ApplyTextColor(style, textColor);
+            return style;
         }
 
         private static Texture2D MakeSolidTexture(Color color)

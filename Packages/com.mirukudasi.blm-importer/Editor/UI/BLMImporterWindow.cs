@@ -114,6 +114,7 @@ namespace BLMImporter.Editor
             sortMode = (ItemSortMode)EditorPrefs.GetInt(c_PrefSortMode, (int)ItemSortMode.Name);
             sortDescending = EditorPrefs.GetBool(c_PrefSortDescending, false);
             thumbnails.Repaint += Repaint;
+            ImportedPackageIndex.StateChanged += Repaint;
             EditorApplication.update += OnEditorUpdate;
             wantsMouseMove = true;
             Reload();
@@ -126,6 +127,7 @@ namespace BLMImporter.Editor
                 thumbnails.Repaint -= Repaint;
                 thumbnails.Dispose();
             }
+            ImportedPackageIndex.StateChanged -= Repaint;
             EditorApplication.update -= OnEditorUpdate;
         }
 
@@ -1208,12 +1210,16 @@ namespace BLMImporter.Editor
             }
 
             DrawPackageToolbar(packages);
+            // プロジェクトに入っている版との新旧はアイテム内の unitypackage を見比べて決まるため、
+            // 一覧全体をまとめて判定してから各行へ結果を渡す
+            var itemPackagePaths = packages.Select(package => package.r_FullPath).ToList();
+            var packageStates = ImportedPackageIndex.GetStates(itemPackagePaths);
             packageScroll = EditorGUILayout.BeginScrollView(packageScroll, GUILayout.Height(c_PackageListHeight));
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 for (var i = 0; i < packages.Count; i += 1)
                 {
-                    DrawPackageRow(packages[i], i);
+                    DrawPackageRow(packages[i], i, packageStates[packages[i].r_FullPath]);
                 }
             }
             EditorGUILayout.EndScrollView();
@@ -1245,7 +1251,7 @@ namespace BLMImporter.Editor
         }
 
         // 1行=1パッケージ。チェックボックス／2段ファイル名／単体インポートを縦中央で揃える
-        private void DrawPackageRow(ItemFile file, int index)
+        private void DrawPackageRow(ItemFile file, int index, PackageImportState importState)
         {
             var rowRect = GUILayoutUtility.GetRect(0f, 34f, GUILayout.ExpandWidth(true));
             if (Event.current.type == EventType.Repaint)
@@ -1272,8 +1278,33 @@ namespace BLMImporter.Editor
             var iconRect = new Rect(checkRect.xMax + 4f, rowRect.y + (34f - 18f) * 0.5f, 20f, 18f);
             GUI.Label(iconRect, "📦");
 
-            const float c_ButtonWidth = 84f;
+            // 分割ボタンの主ボタンに「再インポート」が収まる幅にする
+            const float c_ButtonWidth = 110f;
             var buttonRect = new Rect(rowRect.xMax - 6f - c_ButtonWidth, rowRect.y + (34f - 22f) * 0.5f, c_ButtonWidth, 22f);
+            DrawPackageActionButton(buttonRect, file, importState);
+
+            var textX = iconRect.xMax + 4f;
+            var textRect = new Rect(textX, rowRect.y, Mathf.Max(0f, buttonRect.x - 6f - textX), 34f);
+            DrawPackageNameText(textRect, file);
+
+            HandlePackageRowClick(rowRect, file);
+        }
+
+        // プロジェクトに入っている版と比べた新旧でボタンを切り替える。
+        // 入っている版そのものは「開く」を主にし、それより古い版は取り込み直しを主にする。
+        // 新しい版、まだ取り込んでいないもの、判定が終わっていないものは「インポート」だけを出し、ユーザーを待たせない。
+        private void DrawPackageActionButton(Rect buttonRect, ItemFile file, PackageImportState importState)
+        {
+            if (importState == PackageImportState.Current)
+            {
+                DrawSplitButton(buttonRect, "開く", false, () => RevealImportedFolder(file), "再インポート", true, () => ImportPackage(file.r_FullPath));
+                return;
+            }
+            if (importState == PackageImportState.Older)
+            {
+                DrawSplitButton(buttonRect, "再インポート", true, () => ImportPackage(file.r_FullPath), "開く", false, () => RevealImportedFolder(file));
+                return;
+            }
             using (new EditorGUI.DisabledScope(SequentialPackageImporter.IsRunning))
             {
                 if (GUI.Button(buttonRect, "インポート"))
@@ -1281,12 +1312,57 @@ namespace BLMImporter.Editor
                     ImportPackage(file.r_FullPath);
                 }
             }
+        }
 
-            var textX = iconRect.xMax + 4f;
-            var textRect = new Rect(textX, rowRect.y, Mathf.Max(0f, buttonRect.x - 6f - textX), 34f);
-            DrawPackageNameText(textRect, file);
+        // 主となる操作のボタンと、右端の下矢印から選べるもう1つの操作を並べる。
+        // インポート中は取り込みの操作だけを押せなくし、ボタン全体の大きさは単独のボタンと同じに保つ。
+        private void DrawSplitButton(Rect buttonRect, string mainLabel, bool isMainImport, System.Action mainAction, string menuLabel, bool isMenuImport, System.Action menuAction)
+        {
+            const float c_ArrowWidth = 20f;
+            var mainRect = new Rect(buttonRect.x, buttonRect.y, buttonRect.width - c_ArrowWidth, buttonRect.height);
+            var arrowRect = new Rect(mainRect.xMax, buttonRect.y, c_ArrowWidth, buttonRect.height);
+            using (new EditorGUI.DisabledScope(isMainImport && SequentialPackageImporter.IsRunning))
+            {
+                if (GUI.Button(mainRect, mainLabel, styles.SplitButtonMain))
+                {
+                    mainAction();
+                }
+            }
+            if (GUI.Button(arrowRect, "▼", styles.SplitButtonArrow))
+            {
+                ShowPackageActionMenu(arrowRect, menuLabel, isMenuImport, menuAction);
+            }
+        }
 
-            HandlePackageRowClick(rowRect, file);
+        // 下矢印から開くメニュー。インポート中は取り込みの操作を選べなくする
+        private void ShowPackageActionMenu(Rect anchorRect, string label, bool isImport, System.Action action)
+        {
+            var menu = new GenericMenu();
+            var content = new GUIContent(label);
+            if (isImport && SequentialPackageImporter.IsRunning)
+            {
+                menu.AddDisabledItem(content);
+            }
+            else
+            {
+                menu.AddItem(content, false, () => action());
+            }
+            menu.DropDown(anchorRect);
+        }
+
+        // 取り込み先のルートフォルダを Project ウィンドウで選択してハイライトする
+        private void RevealImportedFolder(ItemFile file)
+        {
+            var rootAssetPath = ImportedPackageIndex.GetRootAssetPath(file.r_FullPath);
+            var folder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(rootAssetPath);
+            if (folder == null)
+            {
+                EditorUtility.DisplayDialog("BLMImporter", "取り込み先のフォルダが見つかりませんでした。", "OK");
+                return;
+            }
+            EditorUtility.FocusProjectWindow();
+            Selection.activeObject = folder;
+            EditorGUIUtility.PingObject(folder);
         }
 
         // パッケージ行のファイル名（とフォルダ）を縦中央に積む
