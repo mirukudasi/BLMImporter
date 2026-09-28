@@ -70,11 +70,12 @@ namespace BLMImporter.Editor.Core
         public readonly string r_RelativePath;
         public readonly bool r_IsUnityPackage;
 
-        public ItemFile(string fullPath, string relativePath, bool isUnityPackage)
+        // 相対パスと unitypackage かどうかはフルパスから決まるので、呼び出し側では渡さずここで求める
+        public ItemFile(string fullPath, string itemFolderPath)
         {
             r_FullPath = fullPath ?? "";
-            r_RelativePath = relativePath ?? "";
-            r_IsUnityPackage = isUnityPackage;
+            r_RelativePath = r_FullPath.Substring((itemFolderPath ?? "").Length).TrimStart('\\', '/');
+            r_IsUnityPackage = r_FullPath.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase);
         }
 
         // ファイルの同一性はフルパスで決まる。リロードやウィンドウ跨ぎで別インスタンスになっても

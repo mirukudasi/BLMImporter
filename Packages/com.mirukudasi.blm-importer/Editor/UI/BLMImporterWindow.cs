@@ -11,7 +11,7 @@ namespace BLMImporter.Editor
     /// <summary>
     /// BOOTH Library Manager の data.db を読み込み、購入済みアイテムを一覧から選んで
     /// Unityプロジェクトへインポートするためのエディタウィンドウ。
-    /// データ処理は Core 側（LibraryData / ItemFilter / PackageImporter）が担い、
+    /// データ処理は Core 側（LibraryRuntimeSnapshot / ItemFilter / PackageImporter）が担い、
     /// このクラスは描画と入力の処理に専念する。
     /// </summary>
     public partial class BLMImporterWindow : EditorWindow

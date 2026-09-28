@@ -15,7 +15,7 @@ using System.Linq;
 using BLMImporter.Editor.Core;
 
 // 1. ライブラリを読み込む
-var snapshot = LibraryData.Load(LibraryData.DefaultDatabasePath);
+var snapshot = LibraryRuntimeSnapshot.Load(LibraryRuntimeSnapshot.DefaultDatabasePath);
 
 // 2. 条件で絞り込む
 var filter = new ItemFilter {
@@ -34,12 +34,13 @@ foreach (var request in plan.m_Packages) {
 }
 ```
 
-## LibraryData — ライブラリの読み込み
+## LibraryRuntimeSnapshot — ライブラリの読み込み
 
 | メンバー | 説明 |
 |---|---|
 | `string DefaultDatabasePath` | 標準的な data.db の場所 (`%AppData%/pm.booth.library-manager/data.db`) |
-| `LibrarySnapshot Load(string databasePath)` | DBを読み込み、ライブラリフォルダを走査してスナップショットを返す |
+| `LibraryRuntimeSnapshot Load(string databasePath)` | DBを読み込み、ライブラリフォルダを走査してスナップショットを返す |
+| `LibraryRuntimeSnapshot Current` | 標準の場所の data.db を読んだ共有スナップショット(初回アクセスで読み込み、`ClearCache()` で破棄) |
 
 - DBが存在しない・形式が不正な場合は例外を投げます (`FileNotFoundException` / `InvalidDataException` など)
 - 読み込み後の `LibrarySnapshot.m_LibraryPath` が空、またはフォルダが存在しない場合は、アプリ側でライブラリフォルダが未設定の状態です
@@ -172,7 +173,7 @@ var texture = thumbnails.Get(item.m_ThumbnailUrl);
 - `MiniSqlite` — ネイティブライブラリ不要の読み取り専用SQLiteリーダー。`HasTable(name)` と `SelectAll(name)` で data.db の任意テーブルを読める
 
 ```csharp
-var db = new MiniSqlite(LibraryData.DefaultDatabasePath);
+var db = new MiniSqlite(LibraryRuntimeSnapshot.DefaultDatabasePath);
 foreach (var row in db.SelectAll("shops")) {
     Debug.Log(row.GetString("name"));
 }

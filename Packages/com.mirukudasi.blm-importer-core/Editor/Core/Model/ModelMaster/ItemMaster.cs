@@ -8,7 +8,7 @@ namespace BLMImporter.Editor.Core
     /// アイテムの不変マスタデータ
     /// ローカルファイル状態や派生値は持たない（それらは <see cref="ItemRuntime"/> 側）。
     /// </summary>
-    public sealed class ItemMaster
+    public sealed class ItemMaster : ILibraryMasterRow
     {
         public readonly ItemId r_Id;
         public readonly string r_Name;
@@ -31,33 +31,45 @@ namespace BLMImporter.Editor.Core
         public readonly IReadOnlyList<OrderId> r_OrderIds;
         public readonly IReadOnlyList<ItemVariationMaster> r_Variations;
 
-        public ItemMaster(
-            ItemId id, string name, ShopId shopId, string shopName, string shopThumbnailUrl,
-            SubCategoryId subCategoryId, string subCategoryName, ParentCategoryId parentCategoryId, string parentCategoryName,
-            bool adult, string description, string thumbnailUrl,
-            string publishedAt, string updatedAt, string libraryUpdatedAt, string registeredAt,
-            IEnumerable<string> tags, IEnumerable<OrderId> orderIds, IEnumerable<ItemVariationMaster> variations)
+        internal ItemMaster(MiniSqlite.Row row, LibraryMaster library)
         {
-            r_Id = id;
-            r_Name = name ?? "";
-            r_ShopId = shopId;
-            r_ShopName = shopName ?? "";
-            r_ShopThumbnailUrl = new Url(shopThumbnailUrl);
-            r_SubCategoryId = subCategoryId;
-            r_SubCategoryName = subCategoryName ?? "";
-            r_ParentCategoryId = parentCategoryId;
-            r_ParentCategoryName = parentCategoryName ?? "";
-            r_Adult = adult;
-            r_Description = description ?? "";
-            r_ThumbnailUrl = new Url(thumbnailUrl);
-            r_PublishedAt = ModelDate.Parse(publishedAt);
-            r_UpdatedAt = ModelDate.Parse(updatedAt);
-            r_LibraryUpdatedAt = ModelDate.Parse(libraryUpdatedAt);
-            r_RegisteredAt = ModelDate.Parse(registeredAt);
+            r_Id = new ItemId(row.m_RowId);
+            r_Name = row.GetString("name") ?? "";
+            r_ShopId = new ShopId(row.GetString("shop_subdomain") ?? "");
+
+            r_ShopName = r_ShopId.r_Value;
+            r_ShopThumbnailUrl = new Url("");
+            var shop = library.FindShop(r_ShopId);
+            if (shop != null) {
+                r_ShopName = shop.r_Name;
+                r_ShopThumbnailUrl = shop.r_ThumbnailUrl;
+            }
+
+            r_SubCategoryId = new SubCategoryId(row.GetLong("sub_category", 0));
+            r_SubCategoryName = "";
+            r_ParentCategoryId = new ParentCategoryId(0);
+            r_ParentCategoryName = "";
+            var subCategory = library.FindSubCategory(r_SubCategoryId);
+            if (subCategory != null) {
+                r_SubCategoryName = subCategory.r_Name;
+                r_ParentCategoryId = subCategory.r_ParentCategoryId;
+                r_ParentCategoryName = library.FindParentCategory(r_ParentCategoryId)?.r_Name ?? "";
+            }
+
+            r_Adult = row.GetLong("adult", 0) != 0;
+            r_Description = row.GetString("description") ?? "";
+            r_ThumbnailUrl = new Url(row.GetString("thumbnail_url") ?? "");
+            r_PublishedAt = ModelDate.Parse(row.GetString("published_at"));
+            r_UpdatedAt = ModelDate.Parse(row.GetString("updated_at"));
+            r_LibraryUpdatedAt = ModelDate.Parse(library.FindItemUpdateHistory(r_Id)?.r_LastUpdatedAt);
+            r_RegisteredAt = ModelDate.Parse(library.FindRegisteredItem(r_Id)?.r_CreatedAt);
+
             // 防御的コピーで生成後の変更を防ぐ
-            r_Tags = (tags ?? Enumerable.Empty<string>()).ToArray();
-            r_OrderIds = (orderIds ?? Enumerable.Empty<OrderId>()).ToArray();
-            r_Variations = (variations ?? Enumerable.Empty<ItemVariationMaster>()).ToArray();
+            r_Tags = library.r_TagsByItem[r_Id].Select(tag => tag.r_Tag).ToArray();
+            r_Variations = library.r_VariationsByItem[r_Id].ToArray();
+            r_OrderIds = r_Variations.Select(variation => variation.r_OrderId).Where(orderId => orderId.IsValid).Distinct().ToArray();
         }
+
+        bool ILibraryMasterRow.IsValid => true;
     }
 }
