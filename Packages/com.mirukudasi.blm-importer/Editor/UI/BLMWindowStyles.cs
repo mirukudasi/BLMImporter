@@ -22,6 +22,23 @@ namespace BLMImporter.Editor
         }
     }
 
+    /// <summary>GUI.backgroundColor を一時的に変更し、Dispose時に元へ戻す。</summary>
+    internal sealed class GuiBackgroundColorScope : IDisposable
+    {
+        private readonly Color previous;
+
+        public GuiBackgroundColorScope(Color color)
+        {
+            previous = GUI.backgroundColor;
+            GUI.backgroundColor = color;
+        }
+
+        public void Dispose()
+        {
+            GUI.backgroundColor = previous;
+        }
+    }
+
     /// <summary>ウィンドウ描画で使うGUIスタイル・配色をまとめて生成する。</summary>
     internal sealed class BLMWindowStyles
     {
@@ -47,6 +64,15 @@ namespace BLMImporter.Editor
         public readonly Color Separator;
         public readonly Color ThumbFrame;
         public readonly Color ThumbBack;
+
+        public static readonly Color DownloadButtonColor = new Color(0.85f, 0.25f, 0.25f);
+        public static readonly Color NotDownloadedColor = new Color(0.95f, 0.65f, 0.30f);
+        public static readonly Color ImportedColor = new Color(0.45f, 0.80f, 0.50f);
+        public static readonly Color NeutralStatusColor = new Color(0.65f, 0.65f, 0.65f);
+        public static readonly Color ImportingColor = new Color(0.95f, 0.75f, 0.2f);
+        public static readonly Color WaitingColor = new Color(0.66f, 0.66f, 0.66f);
+        public static readonly Color ExcludedColor = new Color(0.93f, 0.32f, 0.32f);
+        public static readonly Color NotImportedColor = new Color(0.5f, 0.7f, 0.95f);
 
         public BLMWindowStyles()
         {
@@ -99,15 +125,7 @@ namespace BLMImporter.Editor
             SplitButtonArrow.padding = new RectOffset(0, 0, 0, 0);
             SplitButtonArrow.fontSize = 9;
 
-            var assetLabel = GUI.skin.FindStyle("AssetLabel");
-            if (assetLabel != null)
-            {
-                TagChip = new GUIStyle(assetLabel);
-            }
-            else
-            {
-                TagChip = new GUIStyle(EditorStyles.miniButton);
-            }
+            TagChip = new GUIStyle(GUI.skin.FindStyle("AssetLabel") ?? EditorStyles.miniButton);
 
             if (pro)
             {
@@ -131,15 +149,12 @@ namespace BLMImporter.Editor
         /// <summary>アイテム状態に応じた表示色を返す。</summary>
         public Color StatusColor(ItemPackageStatus status)
         {
-            if (status == ItemPackageStatus.NotDownloaded)
+            return status switch
             {
-                return new Color(0.95f, 0.65f, 0.30f);
-            }
-            if (status == ItemPackageStatus.HasUnityPackage)
-            {
-                return new Color(0.45f, 0.80f, 0.50f);
-            }
-            return new Color(0.65f, 0.65f, 0.65f);
+                ItemPackageStatus.NotDownloaded => NotDownloadedColor,
+                ItemPackageStatus.HasUnityPackage => ImportedColor,
+                _ => NeutralStatusColor
+            };
         }
 
         /// <summary>

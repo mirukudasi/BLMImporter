@@ -51,6 +51,9 @@ namespace BLMImporter.Editor
             }
         }
 
+        // インポートの進み具合が変わったときに通知する。開いているウィンドウが再描画に使う
+        public static event Action StateChanged;
+
         public static bool IsRunning => SessionState.GetBool(c_KeyRunning, false);
 
         /// <summary>
@@ -71,46 +74,30 @@ namespace BLMImporter.Editor
         }
 
         /// <summary>対象をキューに積み、直列インポートを開始する。</summary>
-        public static void Run(IEnumerable<PackageImportRequest> requests, PackageImportOptions options)
+        public static void Run(IEnumerable<string> packagePaths, PackageImportOptions options)
         {
-            if (IsRunning) {
-                EditorUtility.DisplayDialog("BLMImporter", "インポート処理中のため、新しいインポートは開始できません。", "OK");
+            if (BLMDialogs.WarnIfImportRunning()) {
                 return;
             }
 
-            var paths = requests
-                .Select(request => request.m_PackagePath)
-                .Where(path => !string.IsNullOrEmpty(path))
-                .ToList();
+            var paths = NormalizePaths(packagePaths);
             if (paths.Count == 0) {
                 return;
             }
 
-            // 念のため前回の進行中フラグを落としてから開始する（多重起動ガードの誤作動防止）
-            s_WaitingForImportCallback = false;
-            s_GraceDeadline = 0.0;
             SaveQueue(paths);
-            SessionState.SetString(c_KeyAll, string.Join(c_QueueSeparator.ToString(), paths));
+            SessionStateList.Save(c_KeyAll, paths, c_QueueSeparator);
             SessionState.EraseString(c_KeyDone);
-            SessionState.EraseString(c_KeyActive);
-            SessionState.EraseString(c_KeyActiveOriginal);
-            SessionState.EraseString(c_KeyTempFile);
-            SessionState.SetBool(c_KeyInteractive, options.m_Interactive);
-            SessionState.SetBool(c_KeyRunning, true);
-            EnsureSubscribed();
-            ScheduleImportNext();
+            BeginRunning(options);
         }
 
         /// <summary>
         /// 実行中なら対象を末尾のキューへ追加し、止まっていれば新規に開始する。
         /// ダウンロード完了分をライブで取り込みキューへ送り込むのに使う。
         /// </summary>
-        public static void Enqueue(IEnumerable<PackageImportRequest> requests, PackageImportOptions options)
+        public static void Enqueue(IEnumerable<string> packagePaths, PackageImportOptions options)
         {
-            var paths = requests
-                .Select(request => request.m_PackagePath)
-                .Where(path => !string.IsNullOrEmpty(path))
-                .ToList();
+            var paths = NormalizePaths(packagePaths);
             if (paths.Count == 0) {
                 return;
             }
@@ -122,25 +109,38 @@ namespace BLMImporter.Editor
                 all.Add(path);
                 queue.Add(path);
             }
-            SessionState.SetString(c_KeyAll, string.Join(c_QueueSeparator.ToString(), all));
+            SessionStateList.Save(c_KeyAll, all, c_QueueSeparator);
             SaveQueue(queue);
 
             if (!IsRunning) {
                 // 直前の進捗を保ったまま再開する（Run と違い done をリセットしない）
-                s_WaitingForImportCallback = false;
-                s_GraceDeadline = 0.0;
-                ClearActive();
-                SessionState.EraseString(c_KeyTempFile);
-                SessionState.SetBool(c_KeyInteractive, options.m_Interactive);
-                SessionState.SetBool(c_KeyRunning, true);
-                EnsureSubscribed();
-                ScheduleImportNext();
+                BeginRunning(options);
             }
             else if (!s_WaitingForImportCallback) {
                 // 実行中だがアイドル（処理中の1件が無い）なら次を起動する
                 ScheduleImportNext();
             }
-            RepaintImporterWindows();
+            NotifyStateChanged();
+        }
+
+        // 呼び出し元が空のパスを混ぜて渡しても、取り込み対象に入れないようにする
+        private static List<string> NormalizePaths(IEnumerable<string> packagePaths)
+        {
+            return packagePaths.Where(path => !string.IsNullOrEmpty(path)).ToList();
+        }
+
+        // 実行中の印を立てて購読し、次の1件の取り込みを予約する。
+        private static void BeginRunning(PackageImportOptions options)
+        {
+            // 念のため前回の進行中フラグを落としてから開始する（多重起動ガードの誤作動防止）
+            s_WaitingForImportCallback = false;
+            s_GraceDeadline = 0.0;
+            ClearActive();
+            SessionState.EraseString(c_KeyTempFile);
+            SessionState.SetBool(c_KeyInteractive, options.m_Interactive);
+            SessionState.SetBool(c_KeyRunning, true);
+            EnsureSubscribed();
+            ScheduleImportNext();
         }
 
         // 次の1件のインポートを次フレームに回す。
@@ -183,7 +183,7 @@ namespace BLMImporter.Editor
                     CleanupTempFile();
                     MarkProcessed(path);
                     ClearActive();
-                    Debug.LogError("unitypackageのインポートに失敗したためスキップします: " + path + "\n" + exception);
+                    Debug.LogError($"unitypackageのインポートに失敗したためスキップします: {path}\n{exception}");
                 }
             }
             Finish();
@@ -194,7 +194,7 @@ namespace BLMImporter.Editor
             OnImportFinished(packageName, null);
         }
 
-        private static void OnImportFinished(string packageName, string errorMessage = null)
+        private static void OnImportFinished(string packageName, string errorMessage)
         {
             if (!IsRunning) {
                 return;
@@ -203,8 +203,14 @@ namespace BLMImporter.Editor
                 return;
             }
             if (errorMessage != null) {
-                Debug.LogError("unitypackageのインポートに失敗しました: " + packageName + " / " + errorMessage);
+                Debug.LogError($"unitypackageのインポートに失敗しました: {packageName} / {errorMessage}");
             }
+            CompleteActiveAndScheduleNext();
+        }
+
+        // 処理中の1件を完了扱いにして後片付けし、次の1件を予約する。
+        private static void CompleteActiveAndScheduleNext()
+        {
             s_WaitingForImportCallback = false;
             CleanupTempFile();
             MarkProcessed(ActiveOriginalPath());
@@ -225,11 +231,7 @@ namespace BLMImporter.Editor
                 EditorApplication.delayCall += ResumeAfterReload;
                 return;
             }
-            s_WaitingForImportCallback = false;
-            CleanupTempFile();
-            MarkProcessed(ActiveOriginalPath());
-            ClearActive();
-            ScheduleImportNext();
+            CompleteActiveAndScheduleNext();
         }
 
         private static void WatchImportPackageCallback()
@@ -262,22 +264,19 @@ namespace BLMImporter.Editor
                 return;
             }
 
-            Debug.LogWarning("unitypackageのインポート完了コールバックを受信できなかったため、この1件を完了扱いにして次へ進みます: " + ActivePath());
+            Debug.LogWarning($"unitypackageのインポート完了コールバックを受信できなかったため、この1件を完了扱いにして次へ進みます: {ActivePath()}");
             s_GraceDeadline = 0.0;
-            s_WaitingForImportCallback = false;
-            CleanupTempFile();
-            MarkProcessed(ActiveOriginalPath());
-            ClearActive();
-            ScheduleImportNext();
+            CompleteActiveAndScheduleNext();
         }
 
         private static bool IsImportPackageWindowOpen()
         {
             foreach (var window in Resources.FindObjectsOfTypeAll<EditorWindow>()) {
                 var typeName = window.GetType().Name;
-                var title = window.titleContent != null ? window.titleContent.text : "";
-                if (typeName.IndexOf("PackageImport", StringComparison.OrdinalIgnoreCase) >= 0
-                    || title.IndexOf("Import Unity Package", StringComparison.OrdinalIgnoreCase) >= 0) {
+                var title = window.titleContent?.text ?? "";
+                var isImportWindowType = typeName.IndexOf("PackageImport", StringComparison.OrdinalIgnoreCase) >= 0;
+                var hasImportTitle = title.IndexOf("Import Unity Package", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (isImportWindowType || hasImportTitle) {
                     return true;
                 }
             }
@@ -321,7 +320,7 @@ namespace BLMImporter.Editor
             SessionState.SetBool(c_KeyRunning, false);
             // c_KeyAll / c_KeyDone は完了後の進捗表示に使うため残す（次の Run で作り直す）
             Unsubscribe();
-            RepaintImporterWindows();
+            NotifyStateChanged();
         }
 
         // ---- 購読・状態の保存/復元 ----
@@ -391,7 +390,7 @@ namespace BLMImporter.Editor
             var done = LoadList(c_KeyDone);
             if (!done.Contains(originalPath)) {
                 done.Add(originalPath);
-                SessionState.SetString(c_KeyDone, string.Join(c_QueueSeparator.ToString(), done));
+                SessionStateList.Save(c_KeyDone, done, c_QueueSeparator);
             }
         }
 
@@ -401,29 +400,31 @@ namespace BLMImporter.Editor
         private static void CleanupTempFile()
         {
             var tempFile = SessionState.GetString(c_KeyTempFile, "");
-            if (string.IsNullOrEmpty(tempFile)) {
-                return;
-            }
-            try {
-                if (File.Exists(tempFile)) {
-                    File.Delete(tempFile);
-                }
+            var hasTempFile = !string.IsNullOrEmpty(tempFile);
+            if (hasTempFile && TryDeleteFile(tempFile)) {
                 SessionState.EraseString(c_KeyTempFile);
-            } catch (Exception exception) {
-                Debug.LogWarning("一時インポートキャッシュの削除に失敗しました（次回のインポート時に上書きされます）: " + tempFile + "\n" + exception);
             }
         }
 
         // 後始末時に、追跡できていない固定キャッシュの残りも消す（クラッシュ等での取りこぼし対策）。
         private static void DeleteLeftoverImportCache()
         {
+            TryDeleteFile(PackageImporter.ImportCachePath);
+        }
+
+        // 削除に失敗しても取り込み全体は止めず、警告だけ残す。消せたか元から無いときは true
+        private static bool TryDeleteFile(string path)
+        {
+            var deleted = false;
             try {
-                if (File.Exists(PackageImporter.ImportCachePath)) {
-                    File.Delete(PackageImporter.ImportCachePath);
+                if (File.Exists(path)) {
+                    File.Delete(path);
                 }
+                deleted = true;
             } catch (Exception exception) {
-                Debug.LogWarning("一時インポートキャッシュの削除に失敗しました（次回のインポート時に上書きされます）: " + PackageImporter.ImportCachePath + "\n" + exception);
+                Debug.LogWarning($"一時インポートキャッシュの削除に失敗しました（次回のインポート時に上書きされます）: {path}\n{exception}");
             }
+            return deleted;
         }
 
         private static List<string> LoadQueue()
@@ -433,11 +434,7 @@ namespace BLMImporter.Editor
 
         private static List<string> LoadList(string key)
         {
-            var raw = SessionState.GetString(key, "");
-            if (string.IsNullOrEmpty(raw)) {
-                return new List<string>();
-            }
-            return raw.Split(c_QueueSeparator).Where(path => !string.IsNullOrEmpty(path)).ToList();
+            return SessionStateList.Load(key, c_QueueSeparator);
         }
 
         /// <summary>進捗ウィンドウ用に、対象パッケージごとの状態を返す。</summary>
@@ -450,27 +447,31 @@ namespace BLMImporter.Editor
             var activeOriginal = ActiveOriginalPath();
 
             var entries = new List<ImportProgressEntry>(all.Count);
-            var doneCount = 0;
             foreach (var path in all) {
-                ImportEntryStatus status;
-                if (running && activeOriginal.Length > 0 && path == activeOriginal) {
-                    status = ImportEntryStatus.Importing;
-                }
-                else if (done.Contains(path)) {
-                    status = ImportEntryStatus.Done;
-                    doneCount += 1;
-                }
-                else if (running && queue.Contains(path)) {
-                    status = ImportEntryStatus.Pending;
-                }
-                else {
-                    // キューにも done にも無い＝ユーザーが除外した/中断で未取り込み
-                    status = ImportEntryStatus.Excluded;
-                }
-                entries.Add(new ImportProgressEntry(path, status));
+                entries.Add(new ImportProgressEntry(path, ResolveEntryStatus(path, running, activeOriginal, queue, done)));
             }
-            var active = running ? activeOriginal : "";
+            var doneCount = entries.Count(entry => entry.r_Status == ImportEntryStatus.Done);
+            var active = "";
+            if (running) {
+                active = activeOriginal;
+            }
             return new ImportProgress(running, all.Count, doneCount, active, entries);
+        }
+
+        // 対象1件の進捗状態を決める
+        private static ImportEntryStatus ResolveEntryStatus(string path, bool running, string activeOriginal, HashSet<string> queue, HashSet<string> done)
+        {
+            if (running && activeOriginal.Length > 0 && path == activeOriginal) {
+                return ImportEntryStatus.Importing;
+            }
+            if (done.Contains(path)) {
+                return ImportEntryStatus.Done;
+            }
+            if (running && queue.Contains(path)) {
+                return ImportEntryStatus.Pending;
+            }
+            // キューにも done にも無い＝ユーザーが除外した/中断で未取り込み
+            return ImportEntryStatus.Excluded;
         }
 
         /// <summary>残りのインポートを中止する。実行中の1件は止められないが、以降は開始しない。</summary>
@@ -479,7 +480,6 @@ namespace BLMImporter.Editor
             if (!IsRunning) {
                 return;
             }
-            SessionState.SetString(c_KeyQueue, "");
             Finish();
         }
 
@@ -517,22 +517,17 @@ namespace BLMImporter.Editor
                 queue.Remove(originalPath);
                 SaveQueue(queue);
             }
-            RepaintImporterWindows();
+            NotifyStateChanged();
         }
 
         private static void SaveQueue(List<string> paths)
         {
-            SessionState.SetString(c_KeyQueue, string.Join(c_QueueSeparator.ToString(), paths));
+            SessionStateList.Save(c_KeyQueue, paths, c_QueueSeparator);
         }
 
-        private static void RepaintImporterWindows()
+        private static void NotifyStateChanged()
         {
-            foreach (var window in Resources.FindObjectsOfTypeAll<BLMImporterWindow>()) {
-                window.Repaint();
-            }
-            foreach (var window in Resources.FindObjectsOfTypeAll<ImportProgressWindow>()) {
-                window.Repaint();
-            }
+            StateChanged?.Invoke();
         }
     }
 

@@ -17,17 +17,24 @@ namespace BLMImporter.Editor
     internal sealed class ImportProgressWindow : EditorWindow
     {
         private const double c_ReloadInterval = 5.0;
+        private const double c_RepaintInterval = 0.5;
         private const float c_WaitingRowHeight = 56f;
         private const float c_WaitingThumb = 46f;
         private const float c_GroupHeight = 44f;
         private const float c_GroupThumb = 36f;
         private const float c_PackageRowHeight = 22f;
+        private const float c_HeaderButtonHeight = 24f;
 
-        // リロードを跨いで保持する対象。未DLアイテムID／DL済み未取り込みパス／取り込み前に除外したパス／対話インポート設定。
-        private const string c_KeyPending = "BLMImporter.ImportDialog.Pending";
-        private const string c_KeyReady = "BLMImporter.ImportDialog.Ready";
-        private const string c_KeyExcluded = "BLMImporter.ImportDialog.Excluded";
-        private const string c_KeyInteractive = "BLMImporter.ImportDialog.Interactive";
+        // パッケージ行の状態。表示名と色の選択に使う。
+        private enum PackageRowKind
+        {
+            ImportDone,
+            ImporterExcluded,
+            Importing,
+            Waiting,
+            ReadyExcluded,
+            Ready
+        }
 
         private LibraryRuntimeSnapshot m_Snapshot = null;
         private string m_LoadError = "";
@@ -46,25 +53,28 @@ namespace BLMImporter.Editor
         {
             // 新規ダイアログでは前回の進捗（インポート済み表示）を持ち越さない
             SequentialPackageImporter.ClearProgressIfIdle();
-            SessionState.SetString(c_KeyPending, string.Join(",", pendingItemIds));
-            SessionState.SetString(c_KeyReady, string.Join("\n", readyPaths));
-            SessionState.EraseString(c_KeyExcluded);
-            SessionState.SetBool(c_KeyInteractive, interactive);
+            ImportDialogTargets.SetTargets(pendingItemIds, readyPaths, interactive);
             ShowWindow();
         }
 
         // ダウンロード待ち・DL済み未取り込み・除外の対象をクリアする（詳細/単体インポート向け）。
         public static void ClearTargets()
         {
-            SessionState.EraseString(c_KeyPending);
-            SessionState.EraseString(c_KeyReady);
-            SessionState.EraseString(c_KeyExcluded);
+            ImportDialogTargets.Clear();
+        }
+
+        // 詳細ペインや1件だけのインポートで使う。ダウンロード待ちを経ずにすぐ取り込みを始め、進み具合を見せる
+        public static void RunImmediately(List<string> packagePaths, PackageImportOptions options)
+        {
+            ClearTargets();
+            SequentialPackageImporter.Run(packagePaths, options);
+            OpenIfActive();
         }
 
         // 取り込み中・待ち対象がある場合のみ開く（リロード後の開き直しなど）。
         public static void OpenIfActive()
         {
-            if (SequentialPackageImporter.IsRunning || HasPending() || HasReady())
+            if (SequentialPackageImporter.IsRunning || ImportDialogTargets.HasPending() || ImportDialogTargets.HasReady())
             {
                 ShowWindow();
             }
@@ -74,7 +84,6 @@ namespace BLMImporter.Editor
         {
             var window = GetWindow<ImportProgressWindow>("BLMImporter インポート");
             window.minSize = new Vector2(560, 480);
-            window.m_ItemByPath = null;
             window.ReloadSnapshot();
         }
 
@@ -82,6 +91,7 @@ namespace BLMImporter.Editor
         {
             m_Thumbnails = new ThumbnailCache();
             m_Thumbnails.Repaint += Repaint;
+            SequentialPackageImporter.StateChanged += Repaint;
             EditorApplication.update += OnEditorUpdate;
             wantsMouseMove = true;
         }
@@ -93,6 +103,7 @@ namespace BLMImporter.Editor
                 m_Thumbnails.Repaint -= Repaint;
                 m_Thumbnails.Dispose();
             }
+            SequentialPackageImporter.StateChanged -= Repaint;
             EditorApplication.update -= OnEditorUpdate;
         }
 
@@ -105,22 +116,23 @@ namespace BLMImporter.Editor
             m_Thumbnails.Update();
             var now = EditorApplication.timeSinceStartup;
             // 拡張からのダウンロード完了通知があれば、5秒ポーリングを待たず即時に再読込する
-            if (BLMDownloadServer.ConsumeCompletionSignal() && HasPending())
+            if (BLMDownloadServer.ConsumeCompletionSignal() && ImportDialogTargets.HasPending())
             {
                 ReloadSnapshot();
                 Repaint();
             }
             // ダウンロード中は5秒ポーリングを止め、完了通知での即時再読込に任せる（スナップ未取得時のみ取得）
-            var pollForDownloads = HasPending() && !BLMDownloadServer.IsDownloading;
+            var pollForDownloads = ImportDialogTargets.HasPending() && !BLMDownloadServer.IsDownloading;
             if ((m_Snapshot == null || pollForDownloads) && now >= m_NextReloadTime)
             {
                 ReloadSnapshot();
                 Repaint();
             }
             // 取り込み中・ダウンロード中はロック表示や完了反映のため定期再描画する
-            if ((SequentialPackageImporter.IsRunning || BLMDownloadServer.IsDownloading) && now >= m_NextRepaintTime)
+            var isBusy = SequentialPackageImporter.IsRunning || BLMDownloadServer.IsDownloading;
+            if (isBusy && now >= m_NextRepaintTime)
             {
-                m_NextRepaintTime = now + 0.5;
+                m_NextRepaintTime = now + c_RepaintInterval;
                 Repaint();
             }
         }
@@ -136,49 +148,12 @@ namespace BLMImporter.Editor
             }
             catch (Exception exception)
             {
-                m_LoadError = "ライブラリの再読み込みに失敗しました: " + exception.Message;
+                m_LoadError = $"ライブラリの再読み込みに失敗しました: {exception.Message}";
                 Debug.LogException(exception);
             }
             m_ItemByPath = null;
-            MoveDownloadedToReady();
+            ImportDialogTargets.PromoteDownloaded(m_Snapshot);
             m_NextReloadTime = EditorApplication.timeSinceStartup + c_ReloadInterval;
-        }
-
-        // インポート可能（unitypackageが現れた）になった未DLアイテムの unitypackage を「DL済み未取り込み」へ移す。
-        // まだ未DL・ダウンロード済みでもunitypackageが無いものは待ちに残す。
-        private void MoveDownloadedToReady()
-        {
-            if (m_Snapshot == null)
-            {
-                return;
-            }
-            var pending = LoadPending();
-            if (pending.Count == 0)
-            {
-                return;
-            }
-            var ready = LoadReady();
-            var stillPending = new List<long>();
-            foreach (var id in pending)
-            {
-                var item = m_Snapshot.FindItem(new ItemId(id));
-                if (item == null || !item.IsImportable)
-                {
-                    stillPending.Add(id);
-                }
-                else
-                {
-                    foreach (var file in item.UnityPackages)
-                    {
-                        if (!ready.Contains(file.r_FullPath))
-                        {
-                            ready.Add(file.r_FullPath);
-                        }
-                    }
-                }
-            }
-            SavePending(stillPending);
-            SaveReady(ready);
         }
 
         private void OnGUI()
@@ -197,9 +172,9 @@ namespace BLMImporter.Editor
             }
 
             var progress = SequentialPackageImporter.GetProgress();
-            var pending = LoadPending();
-            var ready = LoadReady();
-            var excluded = LoadExcluded();
+            var pending = ImportDialogTargets.LoadPending();
+            var ready = ImportDialogTargets.LoadReady();
+            var excluded = ImportDialogTargets.LoadExcluded();
 
             DrawHeaderBar(progress, ready, excluded, pending);
             DrawPendingSection(pending);
@@ -218,7 +193,7 @@ namespace BLMImporter.Editor
                 // ダウンロード中だけ表示。押すとロック解除（他DLと5秒ポーリングが再開）
                 if (BLMDownloadServer.IsDownloading)
                 {
-                    if (GUILayout.Button("ダウンロード中止", GUILayout.Width(120), GUILayout.Height(24)))
+                    if (GUILayout.Button("ダウンロード中止", GUILayout.Width(120), GUILayout.Height(c_HeaderButtonHeight)))
                     {
                         BLMDownloadServer.MarkDownloadFinished();
                     }
@@ -226,7 +201,7 @@ namespace BLMImporter.Editor
 
                 using (new EditorGUI.DisabledScope(importCount == 0))
                 {
-                    if (GUILayout.Button("インポート開始（" + importCount + "）", GUILayout.Width(150), GUILayout.Height(24)))
+                    if (GUILayout.Button($"インポート開始（{importCount}）", GUILayout.Width(150), GUILayout.Height(c_HeaderButtonHeight)))
                     {
                         StartImport(ready, excluded);
                     }
@@ -235,14 +210,14 @@ namespace BLMImporter.Editor
                 var active = progress.r_IsRunning || pending.Count > 0 || ready.Count > 0;
                 if (active)
                 {
-                    if (GUILayout.Button("キャンセル", GUILayout.Width(90), GUILayout.Height(24)))
+                    if (GUILayout.Button("キャンセル", GUILayout.Width(90), GUILayout.Height(c_HeaderButtonHeight)))
                     {
                         CancelAll(progress);
                     }
                 }
                 else
                 {
-                    if (GUILayout.Button("閉じる", GUILayout.Width(90), GUILayout.Height(24)))
+                    if (GUILayout.Button("閉じる", GUILayout.Width(90), GUILayout.Height(c_HeaderButtonHeight)))
                     {
                         Close();
                     }
@@ -253,7 +228,7 @@ namespace BLMImporter.Editor
             {
                 var ratio = (float)progress.r_DoneCount / progress.r_Total;
                 var barRect = GUILayoutUtility.GetRect(0, 16, GUILayout.ExpandWidth(true));
-                EditorGUI.ProgressBar(barRect, ratio, progress.r_DoneCount + " / " + progress.r_Total);
+                EditorGUI.ProgressBar(barRect, ratio, $"{progress.r_DoneCount} / {progress.r_Total}");
             }
             EditorGUILayout.Space(2);
         }
@@ -270,7 +245,12 @@ namespace BLMImporter.Editor
             }
             if (progress.r_Total > 0 && ready.Count == 0)
             {
-                return progress.r_DoneCount < progress.r_Total ? "インポート終了（未取り込みあり）" : "インポート完了";
+                var title = "インポート完了";
+                if (progress.r_DoneCount < progress.r_Total)
+                {
+                    title = "インポート終了（未取り込みあり）";
+                }
+                return title;
             }
             return "インポート";
         }
@@ -278,7 +258,7 @@ namespace BLMImporter.Editor
         private void CancelAll(ImportProgress progress)
         {
             var proceed = EditorUtility.DisplayDialog(
-                "BLMImporter",
+                BLMDialogs.c_Title,
                 "インポートとダウンロード待ちを中止しますか？",
                 "中止する", "戻る");
             if (!proceed)
@@ -302,30 +282,30 @@ namespace BLMImporter.Editor
             {
                 return;
             }
-            var requests = toImport.Select(path => new PackageImportRequest { m_PackagePath = path });
-            var interactive = SessionState.GetBool(c_KeyInteractive, true);
-            SequentialPackageImporter.Enqueue(requests, new PackageImportOptions { m_Interactive = interactive });
-            SessionState.EraseString(c_KeyReady);
-            SessionState.EraseString(c_KeyExcluded);
+            var interactive = ImportDialogTargets.LoadInteractive();
+            SequentialPackageImporter.Enqueue(toImport, new PackageImportOptions { m_Interactive = interactive });
+            ImportDialogTargets.ClearReadyAndExcluded();
         }
 
         // ---- 未ダウンロード（ダウンロード待ち）。見出しは常に表示し、空のときは一覧を出さない。 ----
 
         private void DrawPendingSection(List<long> pending)
         {
-            m_PendingExpanded = EditorGUILayout.Foldout(m_PendingExpanded, "未ダウンロード（" + pending.Count + "）", true);
+            m_PendingExpanded = EditorGUILayout.Foldout(m_PendingExpanded, $"未ダウンロード（{pending.Count}）", true);
             if (!m_PendingExpanded || pending.Count == 0)
             {
                 return;
             }
             var height = Mathf.Min(pending.Count * c_WaitingRowHeight + 8f, 180f);
-            m_WaitingScroll = EditorGUILayout.BeginScrollView(m_WaitingScroll, EditorStyles.helpBox, GUILayout.Height(height));
-            foreach (var id in pending)
+            using (var scroll = new EditorGUILayout.ScrollViewScope(m_WaitingScroll, EditorStyles.helpBox, GUILayout.Height(height)))
             {
-                var item = m_Snapshot != null ? m_Snapshot.FindItem(new ItemId(id)) : null;
-                DrawWaitingRow(item, id);
+                m_WaitingScroll = scroll.scrollPosition;
+                foreach (var id in pending)
+                {
+                    var item = m_Snapshot?.FindItem(new ItemId(id));
+                    DrawWaitingRow(item, id);
+                }
             }
-            EditorGUILayout.EndScrollView();
             EditorGUILayout.Space(2);
         }
 
@@ -333,7 +313,7 @@ namespace BLMImporter.Editor
         {
             var rowRect = GUILayoutUtility.GetRect(0f, c_WaitingRowHeight, GUILayout.ExpandWidth(true));
             var thumbRect = new Rect(rowRect.x + 6f, rowRect.y + (c_WaitingRowHeight - c_WaitingThumb) * 0.5f, c_WaitingThumb, c_WaitingThumb);
-            DrawThumbnail(thumbRect, item != null ? m_Thumbnails.Get(item.r_Master.r_ThumbnailUrl) : null);
+            BLMGuiDraw.Thumbnail(thumbRect, ThumbnailOf(item), m_Styles);
 
             const float c_RightWidth = 150f;
             var rightX = rowRect.xMax - 6f - c_RightWidth;
@@ -341,19 +321,8 @@ namespace BLMImporter.Editor
             {
                 var orderId = item.r_Master.r_OrderIds[0];
                 var buttonRect = new Rect(rightX, rowRect.y + (c_WaitingRowHeight - 22f) * 0.5f, c_RightWidth, 22f);
-                var previousBackground = GUI.backgroundColor;
-                GUI.backgroundColor = new Color(0.85f, 0.25f, 0.25f);
-                // ダウンロード中は他のダウンロードをロックする
-                using (new EditorGUI.DisabledScope(BLMDownloadServer.IsDownloading))
-                {
-                    // 拡張の自動ダウンロード用URL（オーダーページ＋targets＋ライブラリパス）を開く
-                    if (GUI.Button(buttonRect, "ダウンロード"))
-                    {
-                        var server = BLMDownloadServer.BeginDownload();
-                        Application.OpenURL(item.DownloadUrl(orderId, server.port, server.token));
-                    }
-                }
-                GUI.backgroundColor = previousBackground;
+                // 拡張の自動ダウンロード用URL（オーダーページ＋targets＋ライブラリパス）を開く
+                BLMGuiDraw.DownloadButton(buttonRect, () => BLMGuiDraw.OpenDownloadPage(item, orderId));
             }
             else
             {
@@ -362,9 +331,24 @@ namespace BLMImporter.Editor
             }
 
             var textX = thumbRect.xMax + 8f;
-            var name = item != null ? item.r_Master.r_Name : ("アイテム " + id);
-            var sub = item != null ? item.r_Master.r_ShopName + "  •  " + item.r_Master.r_SubCategoryName : null;
+            var name = $"アイテム {id}";
+            string sub = null;
+            if (item != null)
+            {
+                name = item.r_Master.r_Name;
+                sub = BLMGuiDraw.ShopAndCategory(item.r_Master);
+            }
             DrawRowText(new Rect(textX, rowRect.y, Mathf.Max(0f, rightX - 8f - textX), c_WaitingRowHeight), name, sub);
+        }
+
+        // 所属アイテムが分からない行でもサムネイルの枠だけは描けるよう、その場合は画像なしを返す
+        private Texture2D ThumbnailOf(ItemRuntime item)
+        {
+            if (item != null)
+            {
+                return m_Thumbnails.Get(item.r_Master.r_ThumbnailUrl);
+            }
+            return null;
         }
 
         // 太字タイトル＋任意のサブ行を、与えた矩形の縦中央に積む
@@ -373,7 +357,11 @@ namespace BLMImporter.Editor
             const float c_TitleHeight = 17f;
             const float c_SubHeight = 14f;
             var hasSub = !string.IsNullOrEmpty(sub);
-            var totalHeight = hasSub ? c_TitleHeight + c_SubHeight : c_TitleHeight;
+            var totalHeight = c_TitleHeight;
+            if (hasSub)
+            {
+                totalHeight += c_SubHeight;
+            }
             var y = area.y + (area.height - totalHeight) * 0.5f;
             GUI.Label(new Rect(area.x, y, area.width, c_TitleHeight), title, EditorStyles.boldLabel);
             if (hasSub)
@@ -398,22 +386,24 @@ namespace BLMImporter.Editor
             }
 
             EditorGUILayout.Space(2);
-            GUILayout.Label("インポート対象（unitypackage " + targets.Count + " 個）", EditorStyles.boldLabel);
-            m_ImportScroll = EditorGUILayout.BeginScrollView(m_ImportScroll, EditorStyles.helpBox, GUILayout.ExpandHeight(true));
-            if (targets.Count == 0)
+            GUILayout.Label($"インポート対象（unitypackage {targets.Count} 個）", EditorStyles.boldLabel);
+            using (var scroll = new EditorGUILayout.ScrollViewScope(m_ImportScroll, EditorStyles.helpBox, GUILayout.ExpandHeight(true)))
             {
-                EditorGUILayout.Space(8);
-                EditorGUILayout.LabelField("（なし）", EditorStyles.centeredGreyMiniLabel);
-            }
-            else
-            {
-                foreach (var group in GroupByItem(targets))
+                m_ImportScroll = scroll.scrollPosition;
+                if (targets.Count == 0)
                 {
-                    DrawGroup(group.Key, group.Value, statusByPath, excluded, progress.r_ActivePath);
-                    DrawItemSeparator();
+                    EditorGUILayout.Space(8);
+                    EditorGUILayout.LabelField("（なし）", EditorStyles.centeredGreyMiniLabel);
+                }
+                else
+                {
+                    foreach (var group in GroupByItem(targets))
+                    {
+                        DrawGroup(group.Key, group.Value, statusByPath, excluded, progress.r_ActivePath);
+                        DrawItemSeparator();
+                    }
                 }
             }
-            EditorGUILayout.EndScrollView();
         }
 
         // アイテムグループの境界を示す横線
@@ -437,22 +427,27 @@ namespace BLMImporter.Editor
         {
             var rowRect = GUILayoutUtility.GetRect(0f, c_GroupHeight, GUILayout.ExpandWidth(true));
             var thumbRect = new Rect(rowRect.x + 4f, rowRect.y + (c_GroupHeight - c_GroupThumb) * 0.5f, c_GroupThumb, c_GroupThumb);
-            DrawThumbnail(thumbRect, item != null ? m_Thumbnails.Get(item.r_Master.r_ThumbnailUrl) : null);
+            BLMGuiDraw.Thumbnail(thumbRect, ThumbnailOf(item), m_Styles);
 
             const float c_CountWidth = 84f;
             var countX = rowRect.xMax - 6f - c_CountWidth;
-            GUI.Label(new Rect(countX, rowRect.y + (c_GroupHeight - 16f) * 0.5f, c_CountWidth, 16f), "済 " + done + " / " + total, m_Styles.RowSub);
+            GUI.Label(new Rect(countX, rowRect.y + (c_GroupHeight - 16f) * 0.5f, c_CountWidth, 16f), $"済 {done} / {total}", m_Styles.RowSub);
 
             var textX = thumbRect.xMax + 6f;
-            var name = item != null ? item.r_Master.r_Name : "（不明なパッケージ）";
-            var sub = item != null ? item.r_Master.r_ShopName + "  •  " + item.r_Master.r_SubCategoryName : null;
+            var name = "（不明なパッケージ）";
+            string sub = null;
+            if (item != null)
+            {
+                name = item.r_Master.r_Name;
+                sub = BLMGuiDraw.ShopAndCategory(item.r_Master);
+            }
             DrawRowText(new Rect(textX, rowRect.y, Mathf.Max(0f, countX - 6f - textX), c_GroupHeight), name, sub);
         }
 
         private void DrawPackageRow(string path, Dictionary<string, ImportEntryStatus> statusByPath, HashSet<string> excluded, string activePath)
         {
             var inImporter = statusByPath.TryGetValue(path, out var importerStatus);
-            var state = ResolveRowState(path, inImporter, importerStatus, excluded, activePath);
+            var state = RowAppearance(ResolveRowKind(path, inImporter, importerStatus, excluded, activePath));
             using (new EditorGUILayout.HorizontalScope(GUILayout.Height(c_PackageRowHeight)))
             {
                 GUILayout.Space(16);
@@ -471,35 +466,44 @@ namespace BLMImporter.Editor
         }
 
         // 行の状態（ラベルと色）を決める。取り込みキューにあるものは取り込み側の状態、無いものはDL済み未取り込み扱い。
-        private static (string Label, Color Color) ResolveRowState(string path, bool inImporter, ImportEntryStatus importerStatus, HashSet<string> excluded, string activePath)
+        private static PackageRowKind ResolveRowKind(string path, bool inImporter, ImportEntryStatus importerStatus, HashSet<string> excluded, string activePath)
         {
-            var green = new Color(0.45f, 0.80f, 0.50f);
-            var amber = new Color(0.95f, 0.75f, 0.2f);
-            var gray = new Color(0.66f, 0.66f, 0.66f);
-            var red = new Color(0.93f, 0.32f, 0.32f);
-            var blue = new Color(0.5f, 0.7f, 0.95f);
             if (inImporter)
             {
                 if (importerStatus == ImportEntryStatus.Done)
                 {
-                    return ("インポート済", green);
+                    return PackageRowKind.ImportDone;
                 }
                 if (importerStatus == ImportEntryStatus.Excluded)
                 {
-                    return ("除外", red);
+                    return PackageRowKind.ImporterExcluded;
                 }
                 var importing = importerStatus == ImportEntryStatus.Importing || string.Equals(path, activePath, StringComparison.Ordinal);
                 if (importing)
                 {
-                    return ("インポート中", amber);
+                    return PackageRowKind.Importing;
                 }
-                return ("待機中", gray);
+                return PackageRowKind.Waiting;
             }
             if (excluded.Contains(path))
             {
-                return ("除外", red);
+                return PackageRowKind.ReadyExcluded;
             }
-            return ("未取り込み", blue);
+            return PackageRowKind.Ready;
+        }
+
+        // 行の状態に対応する表示名と色
+        private static (string Label, Color Color) RowAppearance(PackageRowKind kind)
+        {
+            return kind switch
+            {
+                PackageRowKind.ImportDone => ("インポート済", BLMWindowStyles.ImportedColor),
+                PackageRowKind.ImporterExcluded => ("除外", BLMWindowStyles.ExcludedColor),
+                PackageRowKind.Importing => ("インポート中", BLMWindowStyles.ImportingColor),
+                PackageRowKind.Waiting => ("待機中", BLMWindowStyles.WaitingColor),
+                PackageRowKind.ReadyExcluded => ("除外", BLMWindowStyles.ExcludedColor),
+                _ => ("未取り込み", BLMWindowStyles.NotImportedColor)
+            };
         }
 
         private void DrawRowToggle(string path, bool inImporter, ImportEntryStatus importerStatus, HashSet<string> excluded)
@@ -508,20 +512,11 @@ namespace BLMImporter.Editor
             {
                 if (importerStatus == ImportEntryStatus.Pending)
                 {
-                    using (new GuiColorScope(new Color(0.93f, 0.32f, 0.32f)))
-                    {
-                        if (GUILayout.Button("除外", EditorStyles.miniButton, GUILayout.Width(56)))
-                        {
-                            SequentialPackageImporter.SetPackageIncluded(path, false);
-                        }
-                    }
+                    ExcludeButton(() => SequentialPackageImporter.SetPackageIncluded(path, false));
                 }
                 else if (importerStatus == ImportEntryStatus.Excluded)
                 {
-                    if (GUILayout.Button("追加", EditorStyles.miniButton, GUILayout.Width(56)))
-                    {
-                        SequentialPackageImporter.SetPackageIncluded(path, true);
-                    }
+                    AddButton(() => SequentialPackageImporter.SetPackageIncluded(path, true));
                 }
                 else
                 {
@@ -530,35 +525,33 @@ namespace BLMImporter.Editor
             }
             else if (excluded.Contains(path))
             {
-                if (GUILayout.Button("追加", EditorStyles.miniButton, GUILayout.Width(56)))
-                {
-                    SetReadyExcluded(path, false);
-                }
+                AddButton(() => ImportDialogTargets.SetExcluded(path, false));
             }
             else
             {
-                using (new GuiColorScope(new Color(0.93f, 0.32f, 0.32f)))
+                ExcludeButton(() => ImportDialogTargets.SetExcluded(path, true));
+            }
+        }
+
+        // 取り込み対象から外すボタン。取り消しにくい操作なので赤で目立たせる
+        private static void ExcludeButton(Action onClick)
+        {
+            using (new GuiColorScope(BLMWindowStyles.ExcludedColor))
+            {
+                if (GUILayout.Button("除外", EditorStyles.miniButton, GUILayout.Width(56)))
                 {
-                    if (GUILayout.Button("除外", EditorStyles.miniButton, GUILayout.Width(56)))
-                    {
-                        SetReadyExcluded(path, true);
-                    }
+                    onClick();
                 }
             }
         }
 
-        private void SetReadyExcluded(string path, bool isExcluded)
+        // 除外した unitypackage を取り込み対象へ戻すボタン
+        private static void AddButton(Action onClick)
         {
-            var set = LoadExcluded();
-            if (isExcluded)
+            if (GUILayout.Button("追加", EditorStyles.miniButton, GUILayout.Width(56)))
             {
-                set.Add(path);
+                onClick();
             }
-            else
-            {
-                set.Remove(path);
-            }
-            SaveExcluded(set);
         }
 
         // パスをアイテム単位にまとめる。順序はパス昇順で安定させる。
@@ -614,96 +607,6 @@ namespace BLMImporter.Editor
             }
             m_ItemByPath = map;
             return m_ItemByPath;
-        }
-
-        private void DrawThumbnail(Rect rect, Texture2D texture)
-        {
-            EditorGUI.DrawRect(rect, m_Styles.ThumbFrame);
-            var inner = new Rect(rect.x + 1f, rect.y + 1f, rect.width - 2f, rect.height - 2f);
-            EditorGUI.DrawRect(inner, m_Styles.ThumbBack);
-            if (texture != null)
-            {
-                GUI.DrawTexture(inner, texture, ScaleMode.ScaleToFit);
-            }
-        }
-
-        // ---- SessionState 保持（リロードを跨ぐ） ----
-
-        private static bool HasPending()
-        {
-            return !string.IsNullOrEmpty(SessionState.GetString(c_KeyPending, ""));
-        }
-
-        private static bool HasReady()
-        {
-            return !string.IsNullOrEmpty(SessionState.GetString(c_KeyReady, ""));
-        }
-
-        private static List<long> LoadPending()
-        {
-            var raw = SessionState.GetString(c_KeyPending, "");
-            var result = new List<long>();
-            if (string.IsNullOrEmpty(raw))
-            {
-                return result;
-            }
-            foreach (var part in raw.Split(','))
-            {
-                if (long.TryParse(part, out var id))
-                {
-                    result.Add(id);
-                }
-            }
-            return result;
-        }
-
-        private static void SavePending(List<long> ids)
-        {
-            if (ids == null || ids.Count == 0)
-            {
-                SessionState.EraseString(c_KeyPending);
-                return;
-            }
-            SessionState.SetString(c_KeyPending, string.Join(",", ids));
-        }
-
-        private static List<string> LoadReady()
-        {
-            return SplitPaths(SessionState.GetString(c_KeyReady, ""));
-        }
-
-        private static void SaveReady(List<string> paths)
-        {
-            if (paths == null || paths.Count == 0)
-            {
-                SessionState.EraseString(c_KeyReady);
-                return;
-            }
-            SessionState.SetString(c_KeyReady, string.Join("\n", paths));
-        }
-
-        private static HashSet<string> LoadExcluded()
-        {
-            return new HashSet<string>(SplitPaths(SessionState.GetString(c_KeyExcluded, "")), StringComparer.Ordinal);
-        }
-
-        private static void SaveExcluded(HashSet<string> paths)
-        {
-            if (paths == null || paths.Count == 0)
-            {
-                SessionState.EraseString(c_KeyExcluded);
-                return;
-            }
-            SessionState.SetString(c_KeyExcluded, string.Join("\n", paths));
-        }
-
-        private static List<string> SplitPaths(string raw)
-        {
-            if (string.IsNullOrEmpty(raw))
-            {
-                return new List<string>();
-            }
-            return raw.Split('\n').Where(path => path.Length > 0).ToList();
         }
     }
 }

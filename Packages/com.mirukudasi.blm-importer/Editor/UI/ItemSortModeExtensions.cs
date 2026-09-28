@@ -7,17 +7,13 @@ namespace BLMImporter.Editor
     {
         public static string GetName(this ItemSortMode mode)
         {
-            switch (mode)
+            return mode switch
             {
-                case ItemSortMode.Name:
-                    return "名前順";
-                case ItemSortMode.ImportOrder:
-                    return "インポート順";
-                case ItemSortMode.Original:
-                    return "DB登録順";
-                default:
-                    return mode.ToString();
-            }
+                ItemSortMode.Name => "名前順",
+                ItemSortMode.ImportOrder => "インポート順",
+                ItemSortMode.Original => "DB登録順",
+                _ => mode.ToString()
+            };
         }
     }
 }
