@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 
 namespace BLMImporter.Editor.Core
@@ -19,7 +20,7 @@ namespace BLMImporter.Editor.Core
 
         public UnityPackageAsset(string guid, DateTime authorTimeUtc, long size)
         {
-            r_Guid = guid ?? "";
+            r_Guid = guid;
             r_AuthorTimeUtc = authorTimeUtc;
             r_Size = size;
         }
@@ -52,8 +53,6 @@ namespace BLMImporter.Editor.Core
         // 読み飛ばし用の作業バッファの大きさ
         private const int c_SkipBufferSize = c_BlockSize * 128;
 
-        private static readonly DateTime r_UnixEpochUtc = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
         /// <summary>
         /// unitypackage に収録されたアセットの一覧を返す。
         /// 本体を持たないもの（フォルダなど）は含めない。
@@ -62,11 +61,10 @@ namespace BLMImporter.Editor.Core
         public static IReadOnlyList<UnityPackageAsset> ReadAssets(string packagePath)
         {
             var assets = new List<UnityPackageAsset>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try {
-                using (var file = File.OpenRead(packagePath))
-                using (var archive = new GZipStream(file, CompressionMode.Decompress))
-                    CollectAssets(archive, assets, seen);
+                using var file = File.OpenRead(packagePath);
+                using var archive = new GZipStream(file, CompressionMode.Decompress);
+                CollectAssets(archive, assets);
             } catch (Exception) {
                 // 壊れたファイルや読み取り権限の問題で一覧表示を止めたくないため、読めた分だけ返す
             }
@@ -77,10 +75,11 @@ namespace BLMImporter.Editor.Core
         /// tar の各ヘッダを順に読み、アセット本体のエントリだけを拾う。
         /// 中身は使わないので読み飛ばす。
         /// </summary>
-        private static void CollectAssets(Stream archive, List<UnityPackageAsset> assets, HashSet<string> seen)
+        private static void CollectAssets(Stream archive, List<UnityPackageAsset> assets)
         {
             var header = new byte[c_BlockSize];
             var skipBuffer = new byte[c_SkipBufferSize];
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             // 空ブロックが2つ続いたら書庫の終端
             var emptyBlockCount = 0;
             while (ReadBlock(archive, header)) {
@@ -93,57 +92,39 @@ namespace BLMImporter.Editor.Core
                 }
                 else {
                     emptyBlockCount = 0;
-                    if (TryExtractAsset(header, out var asset) && seen.Add(asset.r_Guid)) {
-                        assets.Add(asset);
+                    var entryLength = ReadEntryLength(header);
+                    var isNewAsset = TryReadAssetGuid(header, out var guid) && seen.Add(guid);
+                    if (isNewAsset) {
+                        assets.Add(new UnityPackageAsset(guid, ReadEntryTimeUtc(header), entryLength));
                     }
-                    Skip(archive, PaddedLength(ReadEntryLength(header)), skipBuffer);
+                    Skip(archive, PaddedLength(entryLength), skipBuffer);
                 }
             }
         }
 
         /// <summary>
         /// ヘッダのファイル名が "&lt;32桁のGUID&gt;/asset" ならアセット本体とみなし、
-        /// GUID・更新時刻・本体の大きさを取り出す。
+        /// その GUID を取り出す。
         /// </summary>
-        private static bool TryExtractAsset(byte[] header, out UnityPackageAsset asset)
+        private static bool TryReadAssetGuid(byte[] header, out string guid)
         {
-            asset = null;
+            guid = "";
             var name = ReadText(header, c_NameOffset, c_NameLength);
             if (name.StartsWith("./", StringComparison.Ordinal)) {
                 name = name.Substring(2);
             }
             var segments = name.Split('/');
-            var isAssetEntry = segments.Length == 2
-                && IsGuid(segments[0])
-                && string.Equals(segments[1], c_AssetEntryName, StringComparison.Ordinal);
+            var isAssetEntry = segments.Length == 2 && IsGuid(segments[0]) && string.Equals(segments[1], c_AssetEntryName, StringComparison.Ordinal);
             if (isAssetEntry) {
-                asset = new UnityPackageAsset(segments[0], ReadEntryTimeUtc(header), ReadEntryLength(header));
+                guid = segments[0];
                 return true;
             }
             return false;
         }
 
-        private static bool IsGuid(string text)
-        {
-            if (text.Length != c_GuidLength) {
-                return false;
-            }
-            foreach (var character in text) {
-                var isDigit = character >= '0' && character <= '9';
-                var isLowerHex = character >= 'a' && character <= 'f';
-                var isUpperHex = character >= 'A' && character <= 'F';
-                if (!isDigit && !isLowerHex && !isUpperHex) {
-                    return false;
-                }
-            }
-            return true;
-        }
+        private static bool IsGuid(string text) => text.Length == c_GuidLength && text.All(Uri.IsHexDigit);
 
-        private static DateTime ReadEntryTimeUtc(byte[] header)
-        {
-            var seconds = ReadOctal(header, c_TimeOffset, c_TimeLength);
-            return r_UnixEpochUtc.AddSeconds(seconds);
-        }
+        private static DateTime ReadEntryTimeUtc(byte[] header) => DateTimeOffset.FromUnixTimeSeconds(ReadOctal(header, c_TimeOffset, c_TimeLength)).UtcDateTime;
 
         /// <summary>
         /// ヘッダから本体のバイト数を読む。
@@ -185,11 +166,7 @@ namespace BLMImporter.Editor.Core
         // tar の本体は 512 バイト単位に詰め物をして格納される
         private static long PaddedLength(long length)
         {
-            var remainder = length % c_BlockSize;
-            if (remainder == 0) {
-                return length;
-            }
-            return length + (c_BlockSize - remainder);
+            return (length + c_BlockSize - 1) / c_BlockSize * c_BlockSize;
         }
 
         private static string ReadText(byte[] buffer, int offset, int length)

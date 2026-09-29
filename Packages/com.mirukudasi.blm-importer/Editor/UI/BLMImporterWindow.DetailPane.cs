@@ -189,7 +189,7 @@ namespace BLMImporter.Editor
             // プロジェクトに入っている版との新旧はアイテム内の unitypackage を見比べて決まるため、
             // 一覧全体をまとめて判定してから各行へ結果を渡す
             var itemPackagePaths = packages.Select(package => package.r_FullPath).ToList();
-            var packageStates = ImportedPackageIndex.GetStates(itemPackagePaths);
+            var packageActions = ImportedPackageIndex.GetActions(itemPackagePaths);
             using (var scroll = new EditorGUILayout.ScrollViewScope(packageScroll, GUILayout.Height(c_PackageListHeight)))
             {
                 packageScroll = scroll.scrollPosition;
@@ -197,7 +197,7 @@ namespace BLMImporter.Editor
                 {
                     for (var i = 0; i < packages.Count; i += 1)
                     {
-                        DrawPackageRow(packages[i], i, packageStates[packages[i].r_FullPath]);
+                        DrawPackageRow(packages[i], i, packageActions[packages[i].r_FullPath]);
                     }
                 }
             }
@@ -229,7 +229,7 @@ namespace BLMImporter.Editor
         }
 
         // 1行=1パッケージ。チェックボックス／2段ファイル名／単体インポートを縦中央で揃える
-        private void DrawPackageRow(ItemFile file, int index, PackageImportState importState)
+        private void DrawPackageRow(ItemFile file, int index, PackageImportAction importAction)
         {
             var rowRect = GUILayoutUtility.GetRect(0f, c_PackageRowHeight, GUILayout.ExpandWidth(true));
             DrawStripedRowBackground(rowRect, index);
@@ -249,7 +249,7 @@ namespace BLMImporter.Editor
             // 分割ボタンの主ボタンに「再インポート」が収まる幅にする
             const float c_ButtonWidth = 110f;
             var buttonRect = CenterVertically(rowRect.xMax - 6f - c_ButtonWidth, rowRect.y, c_PackageRowHeight, c_ButtonWidth, 22f);
-            DrawPackageActionButton(buttonRect, file, importState);
+            DrawPackageActionButton(buttonRect, file, importAction);
 
             var textX = iconRect.xMax + 4f;
             var textRect = new Rect(textX, rowRect.y, Mathf.Max(0f, buttonRect.x - 6f - textX), c_PackageRowHeight);
@@ -261,14 +261,14 @@ namespace BLMImporter.Editor
         // プロジェクトに入っている版と比べた新旧でボタンを切り替える。
         // 入っている版そのものは「開く」を主にし、それより古い版は取り込み直しを主にする。
         // 新しい版、まだ取り込んでいないもの、判定が終わっていないものは「インポート」だけを出し、ユーザーを待たせない。
-        private void DrawPackageActionButton(Rect buttonRect, ItemFile file, PackageImportState importState)
+        private void DrawPackageActionButton(Rect buttonRect, ItemFile file, PackageImportAction importAction)
         {
-            if (importState == PackageImportState.Current)
+            if (importAction == PackageImportAction.Open)
             {
                 DrawSplitButton(buttonRect, "開く", false, () => RevealImportedFolder(file), "再インポート", true, () => ImportPackage(file.r_FullPath));
                 return;
             }
-            if (importState == PackageImportState.Older)
+            if (importAction == PackageImportAction.Reimport)
             {
                 DrawSplitButton(buttonRect, "再インポート", true, () => ImportPackage(file.r_FullPath), "開く", false, () => RevealImportedFolder(file));
                 return;
