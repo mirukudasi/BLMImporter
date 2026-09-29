@@ -2,13 +2,30 @@
 
 このパッケージの主な変更点を記録します。
 
-## [1.1.0] - 2026-08-27
+## [1.1.0] - 2026-09-29
+
+このリリースには、公開 API の互換性がない変更が含まれます。Core を直接使っている拡張機能は、下の「Changed」「Removed」を確認してください。
 
 ### Added
 
-- unitypackage がこのプロジェクトに入っている版と比べて新しいか古いかを判定する `ImportedPackageIndex` を追加。同じアイテム内で収録アセットの GUID が重なる unitypackage 同士を同じ系列の別の版とみなし、系列ごとに「現在の版」を決める。現在の版は、GUID から引いたプロジェクト側ファイルの大きさが書庫内の大きさと一致する割合が最も高い版で、同率なら作者側の更新時刻が新しい版とする。各 unitypackage の状態は、作者側の更新時刻を現在の版と比べて「現在の版」「古い版」「新しい版」「未インポート」「調査中」のいずれかになる。
-- 照合は GUID で行うため、インポート後にフォルダを移動・改名していても追従する。中身は読まずファイルの大きさだけを比べるため軽量。
-- unitypackage (gzip 圧縮された tar) から収録アセットの GUID・作者側の更新時刻・本体の大きさを取り出す `UnityPackageArchive` を追加。
+- unitypackage に対して取るべき操作を判定する `ImportedPackageIndex` を追加。
+  - `GetActions` に同じアイテムの unitypackage のパスをまとめて渡すと、それぞれの操作(`PackageImportAction`)を返す。プロジェクトに入っている版と作者側の更新時刻が同じなら `Open`、古ければ `Reimport`、新しい・まだ入っていない・調べ中なら `Import`。
+  - 入っている版は、収録アセットの GUID から引いたプロジェクト側ファイルの大きさが、書庫内の大きさと一致する割合で推定する。同じアイテム内で GUID が重なる unitypackage 同士は、同じ系列の別の版として見比べる。
+  - 照合は GUID で行うため、インポート後にフォルダを移動・改名していても追従する。中身は読まずファイルの大きさだけを比べるため軽い。書庫の読み取りはバックグラウンドで行う。
+  - `GetRootAssetPath` で「開く」ときの取り込み先フォルダを、`StateChanged` で判定の変化を受け取れる。
+- 読み込みの入口として `LibraryRuntimeSnapshot.Load(databasePath)` と `LibraryRuntimeSnapshot.DefaultDatabasePath` を追加。
+- `ItemVariationMaster.r_ItemId` と `SmartListCriteriaMaster.r_SmartListId` を追加。
+
+### Changed
+
+- data.db の読み込みを整理した。各テーブルを1つずつの Master に変換して持つ形になり、1行の読み込みに失敗してもその行だけ飛ばして読み込みを続けるようになった。読み込まれるデータの内容は変わらない。
+- Master、`LibraryRuntimeSnapshot`、各 Runtime、`ItemFile`、`Url`、`ItemId` 以外の ID の生成は Core の内部に限った(コンストラクタを internal にした)。拡張機能はこれらを受け取って読むだけになる。
+- `ItemFile` は、フルパスとアイテムフォルダから、相対パスと unitypackage かどうかを自分で求めるようにした。
+
+### Removed
+
+- `LibraryData` を廃止。`LibraryData.LoadRuntime(path)` は `LibraryRuntimeSnapshot.Load(path)` に、`LibraryData.DefaultDatabasePath` は `LibraryRuntimeSnapshot.DefaultDatabasePath` に置き換える。
+- 内部用の型を公開 API から外した: `MiniSqlite`、`Cache<T>`、`ModelDate`、`UnityPackageArchive`、`UnityPackageAsset`。ダウンロード用ローカルサーバーの内部状態(`BLMDownloadServer` の `Port` / `Token` / `EnsureStarted` / `MarkDownloadStarted`)と `ItemId.Undefined` も公開 API から外した。
 
 ## [1.0.1] - 2026-07-19
 
